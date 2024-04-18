@@ -3,46 +3,52 @@ import pandas as pd
 import random
 
 
-
+#capacity: kWh, power:kW, time:minute
 class Car:
-    def __init__(self, capacity, type, init_SOC, arr_time, dep_time, V2G=False, expect_SOC=1, min_max_SOC=(0,1)):
+    def __init__(self, type, arr_time, dep_time, init_SOC=1, capacity=100, V2G=False):
         self.capacity = capacity
         self.init_SOC = init_SOC
         self.SOC = init_SOC
         self.arr_time = arr_time
         self.dep_time = dep_time
         self.V2G = V2G
-        self.expect_SOC = expect_SOC
-        self.min_SOC, self.max_SOC = min_max_SOC
         self.reward = 0
-        if self.SOC == self.max_SOC:
+        if self.SOC == 1:
             self.is_full = True
         else:
             self.is_full = False
 
-        if self.SOC == self.min_SOC:
+        if self.SOC == 0:
             self.is_empty = True
         else:
             self.is_empty = False
         
-        if type == 'work':
-            self.type = 2
-        elif type == 'long':
-            self.type = 0
-        elif type == 'short':
-            self.type = 1
+        if type in ['daily', 'short', 'long']:
+            self.type = type
         else:
-            print('car type error!')
-            self.type = -1
+            print('car type wrong!')
+
+    def get_type(self):
+        return self.type
 
     def get_SOC(self):
         return self.SOC
     
     def get_expect_SOC(self):
-        return self.expect_SOC
-    
-    def get_min_max_SOC(self):
-        return self.min_SOC, self.max_SOC
+        if not self.V2G:
+            return 1
+        x = random.random()
+        if x <= 0.57:
+            return 0.7
+        elif x <= 0.85:
+            return 0.5
+        elif x <= 0.95:
+            return 0.3
+        else:
+            return 0.1
+        
+    def parking_time(self):
+        return self.dep_time - self.arr_time
     
     def is_V2G(self):
         return self.V2G
@@ -56,11 +62,11 @@ class Car:
     # Change the SOC
     def charge_discharge(self, power):
         self.SOC += power / self.capacity
-        if self.SOC > self.max_SOC:
-            self.SOC = self.max_SOC
+        if self.SOC > 1:
+            self.SOC = 1
             self.is_full = True
-        if self.SOC <= self.min_SOC:
-            self.SOC = self.min_SOC
+        if self.SOC <= 0:
+            self.SOC = 0
             self.is_empty = True
         return self.is_full, self.is_empty
 
@@ -69,7 +75,7 @@ class Car:
 # action>0代表从车取电，<0代表给车充电，=0代表不充不放
 # in_power为从车取电，out_power为给车充电
 class Charger:
-    def __init__(self, in_power, out_power, is_V2G):
+    def __init__(self, in_power=20, out_power=100, is_V2G=False):
         self.in_power = in_power
         self.out_power = out_power
         self.is_V2G = is_V2G
@@ -93,11 +99,13 @@ class Charger:
         
 
 
-# 假定car在每一个时间帧里只有充电和放电两种状态， 从Charger中读取
 class Satisfaction:
-    def __init__(self, car, time_resolution=60, price=np.array([0.828, 0.331, 5]), battery_loss=0.05):
+    '''
+    price = array([price_discharge, price_charge, price_parking, price_active])
+    '''
+    def __init__(self, car, time_resolution=60, price=np.array([0.828, 0.331, 5, 0]), battery_loss=0.05):
         self.car = car
-        self.pm, self.pv, self.pp = price/time_resolution
+        self.pm, self.pv, self.pp, self.pa = price/time_resolution
         self.bt_loss = battery_loss/time_resolution
 
     def battery_loss(self):
@@ -106,36 +114,40 @@ class Satisfaction:
     def parking_loss(self):
         return self.pp
     
+    def price_active(self):
+        return self.pa
+    
     def reward_satisfaction(self):
-        return self.pm - self.pv - self.battery_loss() - self.parking_loss()/20
-
-
-
-    def random_intention(self, n0=0.1):
-        return 1 + random.uniform(-n0, n0)
+        return self.pm - self.pv - self.battery_loss() - self.parking_loss()/20 + self.price_active()
 
     def battery_loss_intention(self):
-        return np.exp(1+self.battery_loss()) - np.e
+        return np.exp(self.battery_loss()) - 1
 
     def SOC_intention(self):
-        SOC_exp = self.car.get_expect_SOC()
-        _, SOC_full = self.car.get_min_max_SOC()
-        return np.log(SOC_exp/SOC_full +1)
-    
+        return 5 * self.car.get_SOC() / 3 - 0.5
 
-
-    def intention_satisfaction(self, params=np.array([1, -1, -0.5])):
-        intention = np.array([self.random_intention(), self.battery_loss_intention(), self.SOC_intention()])
+    def intention_satisfaction(self, params=np.array([-1, 1])):
+        intention = np.array([self.battery_loss_intention(), self.SOC_intention()])
         return np.dot(intention, params)
     
-    def driver_satisfaction(self, params=np.array([0.85, 0.18])):
+    def driver_satisfaction(self, params=np.array([0.5, 1])):
         satisfaction = np.array([self.reward_satisfaction(), self.intention_satisfaction()])
         return np.dot(satisfaction, params)
+
+
+    def prob_discharge(self):
+        soc = self.car.get_SOC()
+        if soc > 0.9:
+            return 1
+        elif soc <= 0.3:
+            return 0
+        else:
+            return 1/(1+np.exp(-5*(self.driver_satisfaction()-0.5)))
 
 
 
 
 if __name__ == '__main__':
-    mycar = Car(100, 0, 0, 1, True, 1, (0,1))
+    mycar = Car(type='daily', arr_time=8*60, dep_time=18*60, init_SOC=0.7, V2G=True)
     sac = Satisfaction(mycar)
-    print(sac.reward_satisfaction()*60)
+    print(sac.prob_discharge())
