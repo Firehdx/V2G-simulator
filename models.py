@@ -13,76 +13,104 @@ class Car:
         self.dep_time = dep_time
         self.V2G = V2G
         self.reward = 0
-        if self.SOC == 1:
-            self.is_full = True
-        else:
-            self.is_full = False
-
-        if self.SOC == 0:
-            self.is_empty = True
-        else:
-            self.is_empty = False
         
+        #init car type
         if type in ['daily', 'short', 'long']:
             self.type = type
         else:
             print('car type wrong!')
+
+        # #init expected SOC
+        if not self.V2G:
+            p = 1
+        else:
+            x = random.random()
+            if x <= 0.57:
+                p = 0.7
+            elif x <= 0.85:
+                p = 0.5
+            elif x <= 0.95:
+                p = 0.3
+            else:
+                p = 0.1
+        self.exp_SOC = self.init_SOC * p
+
+        #init battery condition
+        if self.SOC == 1:
+            self.is_full = True
+        else:
+            self.is_full = False
+        if self.SOC == self.exp_SOC:
+            self.is_empty = True
+        else:
+            self.is_empty = False
 
     def get_type(self):
         return self.type
 
     def get_SOC(self):
         return self.SOC
-    
-    def get_expect_SOC(self):
-        if not self.V2G:
-            return 1
-        x = random.random()
-        if x <= 0.57:
-            return 0.7
-        elif x <= 0.85:
-            return 0.5
-        elif x <= 0.95:
-            return 0.3
-        else:
-            return 0.1
-        
-    def parking_time(self):
-        return self.dep_time - self.arr_time
-    
+
     def is_V2G(self):
         return self.V2G
     
-    def is_fully_charged(self):
-        return self.is_full
+    def get_expect_SOC(self):
+        return self.exp_SOC
+        
+    def time_info(self):
+        return self.arr_time, self.dep_time, self.dep_time - self.arr_time
     
-    def is_fully_discharged(self):
-        return self.is_empty
+    def battery_condition(self):
+        return self.is_full, self.is_empty
     
-    # Change the SOC
-    def charge_discharge(self, power):
+    #when charging, reward is -
+    def gain_reward(self, reward):
+        self.reward += reward
+        return self.reward
+    
+    # Change the SOC, power is + when charge and - when discharge
+    # power已在charger中除了60
+    def charge_discharge(self, power, reward):
         self.SOC += power / self.capacity
         if self.SOC > 1:
             self.SOC = 1
             self.is_full = True
-        if self.SOC <= 0:
-            self.SOC = 0
+        if self.SOC <= self.exp_SOC:
+            self.SOC = self.exp_SOC
             self.is_empty = True
+        self.reward -= reward * power
         return self.is_full, self.is_empty
+    
+    def __repr__(self) -> str:
+        if self.V2G:
+            s = 'is_V2G'
+        else:
+            s = 'common'
+        return f"({self.type:5}-{s}, time:{self.arr_time}->{self.dep_time}, SOC:{self.SOC:.3f}->{self.exp_SOC:.3f}, reward:{self.reward:.3f})"
 
 
 
 # action>0代表从车取电，<0代表给车充电，=0代表不充不放
 # in_power为从车取电，out_power为给车充电
+#Unit: power:kW, time:minute, capacity:kWh, so power should /60
 class Charger:
-    def __init__(self, in_power=20, out_power=100, is_V2G=False):
-        self.in_power = in_power
-        self.out_power = out_power
-        self.is_V2G = is_V2G
+    def __init__(self, in_power=20, out_power=100, V2G=False):
+        self.in_power = in_power/60
+        self.out_power = out_power/60
+        self.V2G = V2G
+        self.reward = 0
+
+    def is_V2G(self):
+        return self.V2G
 
     def get_power(self):
         return self.in_power, self.out_power
     
+    def gain_reward(self, reward):
+        self.reward += reward
+        return self.reward
+    
+    # not used
     # 需要矩阵化加速
     # action需要考虑car的电池容量等限制
     def eletric_charged(self, action):
@@ -95,7 +123,16 @@ class Charger:
                 Q_out += self.out_power
             else:
                 pass
-        return 
+        return Q_in, Q_out
+
+    def __repr__(self) -> str:
+        if self.V2G:
+            s = 'is_V2G'
+        else:
+            s = 'common'
+        return f'({s}, charge:{self.out_power:.3f}, discharge:{self.in_power:.3f}, reward:{self.reward:.3f})'
+    
+
         
 
 
@@ -137,12 +174,22 @@ class Satisfaction:
 
     def prob_discharge(self):
         soc = self.car.get_SOC()
+        if not self.car.is_V2G():
+            return 0
+        if self.car.get_type() == 'short':
+            return 0
         if soc > 0.9:
             return 1
         elif soc <= 0.3:
             return 0
         else:
             return 1/(1+np.exp(-5*(self.driver_satisfaction()-0.5)))
+        
+    def intend_discharge(self):
+        if self.prob_discharge() >= 0.5:
+            return True
+        else:
+            return False
 
 
 
