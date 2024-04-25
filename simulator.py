@@ -1,6 +1,6 @@
 import numpy as np
 
-import object_generator as Gen
+import objectGenerator as Gen
 import price as P
 import models as M
 
@@ -66,40 +66,26 @@ def update(evFlow, parkingArea, time):
 
 
 
-def run_per_frame(evFlow, parkingArea, time, display=False):
-    update(evFlow, parkingArea, time)
-    car_reward = 0
-    park_reward = 0
-    if display:
-        print(f'time is {time}')
-        print('car_list:')
-        print(evFlow.get_EVFlow())
-        print('car_waiting:')
-        print(evFlow.get_waiting_list())
-        print('car_leaved:')
-        print(evFlow.get_leaved_list())
-        print('chargers:')
-        print(parkingArea.get_charger_car_pairs())
-    return car_reward, park_reward
-
-
-def run(evFlow, parkingArea, time):
+def run(evFlow, parkingArea, time=24*60, display_time=[24*60-1]):
     evFlow_reward = 0
     park_reward = 0
     for t in range(time):
-        display = t==24*60-1
-        car_reward, park_reward = run_per_frame(evFlow, parkingArea, t, display)
+        update(evFlow, parkingArea, t)
+        if t in display_time:
+            print(f'###############time is {t}#################')
+            print(evFlow)
+            print(parkingArea)
+            print('############################################')
     for car in evFlow.get_leaved_list():
         evFlow_reward += car.gain_reward(0)
     park_reward = parkingArea.get_reward()
     print(f'done! EV reward:{evFlow_reward:.3f}, parking area reward:{park_reward:.3f}')
 
 if __name__ == '__main__':
-    flow = Gen.EVFlow(num_of_EV=100)
-    lot = Gen.Parking_area(30, 0.5)
-    time = 24*60
+    flow = Gen.EVFlow(num_of_EV=10)
+    lot = Gen.Parking_area(5, 0.5)
     
-    # print(update(flow, lot, time))
+    # print(update(flow, lot, time))                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        
     # print('car_list:')
     # print(flow.get_EVFlow())
     # print('car_waiting:')
@@ -109,4 +95,4 @@ if __name__ == '__main__':
     # print('chargers:')
     # print(lot.get_charger_car_pairs())
 
-    run(flow, lot, time)
+    run(flow, lot, time=24*60, display_time=[8*60, 17*60, 24*60-1])

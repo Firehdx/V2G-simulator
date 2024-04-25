@@ -121,7 +121,19 @@ class EVFlow:
             for car in self.car_wait:
                 reward += car.gain_reward(0)
         return reward
-
+    
+    def __repr__(self) -> str:
+        str = f'cars coming: {len(self.car_list)}\n'
+        for car in self.car_list:
+            str += f'{car}\n'
+        str += f'cars waiting: {len(self.car_wait)}\n'
+        for car in self.car_wait:
+            str += f'{car}\n'       
+        str += f'cars leaved: {len(self.car_leave)}\n'
+        for car in self.car_leave:
+            str += f'{car}\n'    
+        return str
+    
 
 class Parking_area:
     def __init__(self, num_of_charger=100, V2G_rate=0.5, charger_params=[20, 100]):
@@ -184,6 +196,13 @@ class Parking_area:
             reward += pair[0].gain_reward(0)
         self.reward = reward
         return reward
+    
+    def __repr__(self) -> str:
+        str = f'num of chargers:{len(self.charger_car_pair)}\n'
+        for idx, pair in self.charger_car_pair.items():
+            charger, car = pair
+            str += f'charger:{charger}-->car:{car}\n'
+        return str
     
         
 

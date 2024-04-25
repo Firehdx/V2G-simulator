@@ -1,5 +1,4 @@
 
-
 # time unit is hours
 def price_vehicle_charge(time=23*60, mall=False):
     time /= 60
@@ -10,8 +9,8 @@ def price_vehicle_charge(time=23*60, mall=False):
     else:
         return 0.331
     
-def price_vehicle_discharge():
-    return 0.6
+def price_vehicle_discharge(price=0.6):
+    return price
 
 def price_mall(time, month=8, transformer=1e4):
     time /= 60

@@ -86,7 +86,7 @@ class Car:
             s = 'is_V2G'
         else:
             s = 'common'
-        return f"({self.type:5}-{s}, time:{self.arr_time}->{self.dep_time}, SOC:{self.SOC:.3f}->{self.exp_SOC:.3f}, reward:{self.reward:.3f})"
+        return f"({self.type:5}-{s}, time:{self.arr_time}->{self.dep_time}, SOC:{self.SOC:.3f}->{self.exp_SOC:.3f}, reward:{self.reward:.2f})"
 
 
 
@@ -130,7 +130,7 @@ class Charger:
             s = 'is_V2G'
         else:
             s = 'common'
-        return f'({s}, charge:{self.out_power:.3f}, discharge:{self.in_power:.3f}, reward:{self.reward:.3f})'
+        return f'({s}, charge:{self.out_power:.3f}, discharge:{self.in_power:.3f}, reward:{self.reward:.2f})'
     
 
         
