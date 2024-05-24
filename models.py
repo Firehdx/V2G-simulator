@@ -3,16 +3,45 @@ import pandas as pd
 import random
 
 
+
+def expected_SOC(init_SOC=1, is_V2G=False):
+    if not is_V2G:
+        p = 1
+    else:
+        x = random.random()
+        if x <= 0.57:
+            p = 0.7
+        elif x <= 0.85:
+            p = 0.5
+        elif x <= 0.95:
+            p = 0.3
+        else:
+            p = 0.1
+    return init_SOC * p
+
+
+def generate_init_SOC(type, arr_time, C):
+    if type == 'daily':
+        L = np.random.normal(loc=10, scale=8/3)
+        SOC = max(1 - L * 0.15 / C, 0)
+    else:
+        t = arr_time/60
+        SOC = min(1 - 0.8 * (t - 7) / 16, 1)
+    return SOC
+        
+
+
+
 #capacity: kWh, power:kW, time:minute
 class Car:
-    def __init__(self, type, arr_time, dep_time, init_SOC=1, capacity=100, V2G=False):
+    def __init__(self, type, arr_time, dep_time, capacity=100, V2G=False):
         self.capacity = capacity
-        self.init_SOC = init_SOC
-        self.SOC = init_SOC
-        self.arr_time = arr_time
-        self.dep_time = dep_time
+        self.arr_time = np.clip(arr_time, a_max=24*60-1, a_min=0)
+        self.dep_time = np.clip(dep_time, a_max=24*60-1, a_min=0)
         self.V2G = V2G
         self.reward = 0
+        self.parking_fee = 0
+        self.park_time = self.arr_time
         
         #init car type
         if type in ['daily', 'short', 'long']:
@@ -20,20 +49,12 @@ class Car:
         else:
             print('car type wrong!')
 
+        # init SOC
+        self.init_SOC = generate_init_SOC(self.type, self.arr_time, capacity)
+        self.SOC = self.init_SOC
+
         # #init expected SOC
-        if not self.V2G:
-            p = 1
-        else:
-            x = random.random()
-            if x <= 0.57:
-                p = 0.7
-            elif x <= 0.85:
-                p = 0.5
-            elif x <= 0.95:
-                p = 0.3
-            else:
-                p = 0.1
-        self.exp_SOC = self.init_SOC * p
+        self.exp_SOC = expected_SOC(self.init_SOC, self.V2G)
 
         #init battery condition
         if self.SOC == 1:
@@ -68,6 +89,23 @@ class Car:
         self.reward += reward
         return self.reward
     
+    def gain_parking_fee(self, fee):
+        self.parking_fee += fee
+        return self.parking_fee
+    
+    def change_park_time(self, time):
+        self.park_time = time
+        return self.park_time
+    
+    def get_park_time(self):
+        return self.park_time
+    
+    def get_reward(self):
+        return self.reward
+    
+    def get_parking_fee(self):
+        return self.parking_fee
+    
     # Change the SOC, power is + when charge and - when discharge
     # power已在charger中除了60
     def charge_discharge(self, power, reward):
@@ -86,7 +124,7 @@ class Car:
             s = 'is_V2G'
         else:
             s = 'common'
-        return f"({self.type:5}-{s}, time:{self.arr_time}->{self.dep_time}, SOC:{self.SOC:.3f}->{self.exp_SOC:.3f}, reward:{self.reward:.2f})"
+        return f"({self.type:5}-{s}, time:{self.arr_time}->{self.dep_time}, SOC:{self.SOC:.3f}->{self.exp_SOC:.3f}, reward:{self.reward:.2f}, parking fee:{self.parking_fee:.2f})"
 
 
 
@@ -99,6 +137,10 @@ class Charger:
         self.out_power = out_power/60
         self.V2G = V2G
         self.reward = 0
+        self.start_working = False
+        self.start_time = 0
+        self.working_time = 0
+        
 
     def is_V2G(self):
         return self.V2G
@@ -109,6 +151,19 @@ class Charger:
     def gain_reward(self, reward):
         self.reward += reward
         return self.reward
+    
+    def work(self, time):
+        self.working_time += 1
+        if self.start_working == False:
+            self.start_working = True
+            self.start_time = time
+        return 
+
+    def get_working_time(self):
+        return self.working_time
+
+    def duty_ratio(self, peak_period=[8*60, 18*60]):
+        return self.working_time / (peak_period[1] - peak_period[0])
     
     # not used
     # 需要矩阵化加速
@@ -140,7 +195,7 @@ class Satisfaction:
     '''
     price = array([price_discharge, price_charge, price_parking, price_active])
     '''
-    def __init__(self, car, time_resolution=60, price=np.array([0.828, 0.331, 5, 0]), battery_loss=0.05):
+    def __init__(self, car, time_resolution=60, price=np.array([0.828, 0.331, 5, 0]), battery_loss=0.0):
         self.car = car
         self.pm, self.pv, self.pp, self.pa = price/time_resolution
         self.bt_loss = battery_loss/time_resolution
@@ -195,6 +250,6 @@ class Satisfaction:
 
 
 if __name__ == '__main__':
-    mycar = Car(type='daily', arr_time=8*60, dep_time=18*60, init_SOC=0.7, V2G=True)
+    mycar = Car(type='daily', arr_time=8*60, dep_time=18*60, V2G=True)
     sac = Satisfaction(mycar)
     print(sac.prob_discharge())

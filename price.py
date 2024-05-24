@@ -1,3 +1,4 @@
+import numpy as np
 
 # time unit is hours
 def price_vehicle_charge(time=23*60, mall=False):
@@ -50,14 +51,31 @@ def price_mall(time, month=8, transformer=1e4):
             else:
                 return 0.347
             
-def price_parking(parking_time):
+def price_parking(parking_time, free_time=2, price_per_hour=5, MAX=35):
     parking_time /= 60
-    if parking_time <= 2:
+    if parking_time <= free_time:
         return 0
-    elif parking_time <= 9:
-        return 5*(parking_time-2)
+    fee = price_per_hour * (parking_time - free_time)
+    if fee < MAX:
+        return fee
     else:
-        return 35
+        return MAX
     
-def price_active():
-    return 0
+def price_active(time, price=None):
+    if price:
+        return price
+    time /= 60
+    return price_active_FM(time) + price_active_PS(time)
+
+def price_active_FM(time):
+    time = np.floor(time).astype(int)
+    if time < 6 or time > 22:
+        return 0
+    p_6to22 = [0.063, 0.05, 0.07, 0.084, 0.105, 0.14, 0.161, 0.168, 0.19, 0.2, 0.22, 0.24, 0.21, 0.168, 0.126, 0.122, 0.105]
+    return p_6to22[time-6]
+
+def price_active_PS(time):
+    return 0.5
+
+if __name__ == '__main__':
+    print(price_active(600))
